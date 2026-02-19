@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:drebakare.medium.com)",
+      "WebFetch(domain:docs.expo.dev)",
+      "WebFetch(domain:expo.dev)",
+      "Bash(npx create-expo-app@latest . --template blank-typescript)",
+      "Bash(npx expo install:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:notifee.app)",
+      "WebFetch(domain:docs.swmansion.com)",
+      "WebFetch(domain:getstream.io)",
+      "WebFetch(domain:www.qed42.com)",
+      "WebFetch(domain:flexapp.ai)",
+      "WebFetch(domain:community.openai.com)",
+      "WebFetch(domain:designdebt.club)",
+      "WebFetch(domain:galaxies.dev)",
+      "WebFetch(domain:blog.logrocket.com)",
+      "WebFetch(domain:www.lune.dev)",
+      "WebFetch(domain:devsolus.com)"
+    ]
+  }
+}
