@@ -10,8 +10,8 @@ export default function SettingsScreen() {
   const [settings, setSettings] = useState<AppSettings>({
     provider: 'openai',
     apiKey: '',
-    transcriptionModel: 'whisper-1',
-    dossierModel: 'gpt-4o-mini',
+    transcriptionModel: 'gpt-4o-mini-transcribe',
+    dossierModel: 'gpt-4.1-mini',
   });
   const [showApiKey, setShowApiKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
