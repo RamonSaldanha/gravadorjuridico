@@ -34,12 +34,16 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
     id: 'gemini',
     name: 'Google Gemini',
     transcriptionModels: [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Rápido e econômico (recomendado)' },
+      { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', description: 'Última geração, rápido (recomendado)' },
+      { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', description: 'Última geração, mais preciso — mais lento' },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Rápido e econômico' },
       { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Mais preciso, reasoning avançado' },
       { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: 'Legado — aposentado em mar/2026' },
     ],
     dossierModels: [
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Rápido e econômico (recomendado)' },
+      { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', description: 'Última geração, rápido (recomendado)' },
+      { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', description: 'Última geração, mais preciso' },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Rápido e econômico' },
       { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Reasoning avançado, mais preciso' },
       { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', description: 'Legado — aposentado em mar/2026' },
     ],

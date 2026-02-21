@@ -1,17 +1,19 @@
 import { useCallback, useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, TextInput, Button, SegmentedButtons, RadioButton, Card, Divider } from 'react-native-paper';
-import { useFocusEffect } from 'expo-router';
+import { Text, TextInput, Button, SegmentedButtons, RadioButton, Card, Divider, Switch } from 'react-native-paper';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { getSettings, getSettingsForProvider, saveSettings, AppSettings } from '../src/services/settings';
 import { AI_PROVIDERS, AIProvider } from '../src/constants/ai';
 import { colors } from '../src/constants/theme';
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const [settings, setSettings] = useState<AppSettings>({
     provider: 'openai',
     apiKey: '',
     transcriptionModel: 'gpt-4o-mini-transcribe',
     dossierModel: 'gpt-4.1-mini',
+    liveTranscriptionEnabled: true,
   });
   const [showApiKey, setShowApiKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -132,6 +134,25 @@ export default function SettingsScreen() {
         </RadioButton.Group>
       </Card>
 
+      <Divider style={styles.divider} />
+
+      <Text style={styles.sectionTitle}>Gravação</Text>
+      <Card style={styles.card}>
+        <View style={styles.switchRow}>
+          <View style={styles.switchLabel}>
+            <Text style={styles.switchTitle}>Transcrição em tempo real</Text>
+            <Text style={styles.switchDescription}>
+              Transcreve durante a gravação (consome tokens)
+            </Text>
+          </View>
+          <Switch
+            value={settings.liveTranscriptionEnabled}
+            onValueChange={(value) => setSettings({ ...settings, liveTranscriptionEnabled: value })}
+            color={colors.primary}
+          />
+        </View>
+      </Card>
+
       <Button
         mode="contained"
         onPress={handleSave}
@@ -140,6 +161,16 @@ export default function SettingsScreen() {
         buttonColor={colors.primary}
       >
         Salvar Configurações
+      </Button>
+
+      <Button
+        mode="outlined"
+        icon="microphone-settings"
+        onPress={() => router.push('/audio-test')}
+        style={styles.audioTestButton}
+        textColor={colors.onSurface}
+      >
+        Teste de Qualidade de Áudio
       </Button>
 
       <Card style={styles.helpCard}>
@@ -201,10 +232,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.onSurface,
   },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  switchLabel: {
+    flex: 1,
+    marginRight: 12,
+  },
+  switchTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.onSurface,
+  },
+  switchDescription: {
+    fontSize: 12,
+    color: colors.onSurfaceVariant,
+    marginTop: 2,
+  },
   saveButton: {
     marginTop: 24,
     borderRadius: 8,
     paddingVertical: 4,
+  },
+  audioTestButton: {
+    marginTop: 24,
+    borderRadius: 8,
+    borderColor: colors.outline,
   },
   helpCard: {
     backgroundColor: colors.surfaceVariant,

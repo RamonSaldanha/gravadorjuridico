@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react';
-import { View, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, StyleSheet, Alert, ScrollView, Pressable } from 'react-native';
 import { Text, IconButton } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useRecorder, formatDuration } from '../src/hooks/useRecorder';
-import { createRecording, updateTranscription } from '../src/database/recordings';
+import { createRecording, updateTranscription, updateTitle } from '../src/database/recordings';
+import { generateTitle } from '../src/services/ai';
+import { getSettings } from '../src/services/settings';
 import { colors } from '../src/constants/theme';
 
 export default function RecordingScreen() {
@@ -13,6 +15,8 @@ export default function RecordingScreen() {
     isPaused,
     duration,
     liveTranscription,
+    isLiveTranscriptionOn,
+    toggleLiveTranscription,
     startRecording,
     pauseRecording,
     resumeRecording,
@@ -45,13 +49,33 @@ export default function RecordingScreen() {
             try {
               const result = await stopRecording();
               const now = new Date();
-              const title = `Atendimento ${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+              const dateStr = now.toLocaleDateString('pt-BR');
+              const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+              const title = `Atendimento ${dateStr} ${timeStr}`;
 
               const id = await createRecording(title, result.uri, result.duration, result.audioParts);
 
               // Save real-time transcription if available
               if (result.transcription) {
                 await updateTranscription(id, result.transcription);
+              }
+
+              // Generate AI title in background (non-blocking)
+              if (result.transcription) {
+                getSettings().then(settings => {
+                  if (!settings.apiKey) return;
+                  generateTitle(
+                    settings.provider,
+                    settings.apiKey,
+                    result.transcription,
+                    settings.dossierModel
+                  ).then(aiTitle => {
+                    if (aiTitle) {
+                      const finalTitle = `${aiTitle} — ${dateStr} ${timeStr}`;
+                      updateTitle(id, finalTitle);
+                    }
+                  }).catch(() => {});
+                }).catch(() => {});
               }
 
               router.replace(`/detail/${id}`);
@@ -120,22 +144,37 @@ export default function RecordingScreen() {
 
       {/* Live transcription */}
       <View style={styles.transcriptionSection}>
-        <Text style={styles.transcriptionLabel}>
-          {hasStarted ? 'Transcrição em tempo real' : 'A transcrição aparecerá aqui durante a gravação'}
-        </Text>
+        {hasStarted ? (
+          <Pressable onPress={toggleLiveTranscription} style={styles.transcriptionHeader}>
+            <Text style={styles.transcriptionHeaderLabel}>Transcrição em tempo real</Text>
+            <View style={[styles.toggleBadge, !isLiveTranscriptionOn && styles.toggleBadgeOff]}>
+              <Text style={styles.toggleBadgeText}>
+                {isLiveTranscriptionOn ? 'ON' : 'OFF'}
+              </Text>
+            </View>
+          </Pressable>
+        ) : (
+          <Text style={styles.transcriptionLabel}>
+            A transcrição aparecerá aqui durante a gravação
+          </Text>
+        )}
         <ScrollView
           ref={scrollRef}
           style={styles.transcriptionScroll}
           contentContainerStyle={styles.transcriptionContent}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
-          {liveTranscription ? (
+          {!hasStarted ? null : !isLiveTranscriptionOn ? (
+            <Text style={styles.transcriptionPlaceholder}>
+              Transcrição em tempo real desativada{'\n'}(economizando tokens)
+            </Text>
+          ) : liveTranscription ? (
             <Text style={styles.transcriptionText}>{liveTranscription}</Text>
-          ) : hasStarted ? (
+          ) : (
             <Text style={styles.transcriptionPlaceholder}>
               Transcrevendo em tempo real...
             </Text>
-          ) : null}
+          )}
         </ScrollView>
       </View>
     </View>
@@ -207,11 +246,36 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: 12,
   },
+  transcriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  transcriptionHeaderLabel: {
+    fontSize: 13,
+    color: colors.onSurfaceVariant,
+  },
   transcriptionLabel: {
     fontSize: 13,
     color: colors.onSurfaceVariant,
-    marginBottom: 8,
     textAlign: 'center',
+    marginBottom: 8,
+  },
+  toggleBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  toggleBadgeOff: {
+    backgroundColor: colors.outline,
+  },
+  toggleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   transcriptionScroll: {
     flex: 1,

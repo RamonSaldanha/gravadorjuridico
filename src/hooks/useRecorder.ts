@@ -5,7 +5,15 @@ import { Paths, File, Directory } from 'expo-file-system';
 import { transcribeAudio } from '../services/ai';
 import { getSettings } from '../services/settings';
 
-const CHUNK_DURATION_MS = 5000; // 5 seconds per chunk
+const CHUNK_DURATION_DEFAULT_MS = 5000;
+
+const SLOW_MODELS = ['gemini-2.5-pro', 'gemini-3.1-pro-preview'];
+
+function getChunkDurationMs(model: string): number {
+  if (SLOW_MODELS.includes(model)) return 8000;
+  return CHUNK_DURATION_DEFAULT_MS;
+}
+
 
 /**
  * Preset de alta qualidade para a gravação completa (arquivo final).
@@ -19,6 +27,7 @@ const FULL_RECORDING_PRESET: RecordingOptions = {
   android: {
     outputFormat: 'mpeg4',
     audioEncoder: 'aac',
+    audioSource: 'voice_communication',
   },
   ios: {
     outputFormat: IOSOutputFormat.MPEG4AAC,
@@ -35,17 +44,18 @@ const FULL_RECORDING_PRESET: RecordingOptions = {
 
 /**
  * Preset leve para chunks de transcrição em tempo real.
- * 64 kbps AAC, 16 kHz, mono — suficiente para APIs de STT
+ * 96 kbps AAC, 16 kHz, mono — suficiente para APIs de STT
  * e reduz latência de upload significativamente.
  */
 const CHUNK_RECORDING_PRESET: RecordingOptions = {
   extension: '.m4a',
   sampleRate: 16000,
   numberOfChannels: 1,
-  bitRate: 64000,
+  bitRate: 96000,
   android: {
     outputFormat: 'mpeg4',
     audioEncoder: 'aac',
+    audioSource: 'voice_communication',
   },
   ios: {
     outputFormat: IOSOutputFormat.MPEG4AAC,
@@ -89,6 +99,7 @@ export function useRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [finalUri, setFinalUri] = useState<string | null>(null);
   const [liveTranscription, setLiveTranscription] = useState('');
+  const [isLiveTranscriptionOn, setIsLiveTranscriptionOn] = useState(true);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chunkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -98,6 +109,8 @@ export function useRecorder() {
   const chunkFilesRef = useRef<string[]>([]);
   const transcriptionRef = useRef('');
   const isStoppingRef = useRef(false);
+  const chunkDurationMsRef = useRef(CHUNK_DURATION_DEFAULT_MS);
+  const liveTranscriptionRef = useRef(true);
 
   const startTimer = useCallback(() => {
     timerRef.current = setInterval(() => {
@@ -152,6 +165,8 @@ export function useRecorder() {
   }, []);
 
   const transcribeChunk = useCallback(async (chunkUri: string) => {
+    if (!liveTranscriptionRef.current) return;
+
     try {
       const settings = await getSettings();
       if (!settings.apiKey) return;
@@ -183,8 +198,8 @@ export function useRecorder() {
       recorderRef.current = newRecorder;
       newRecorder.record();
 
-      // Transcribe saved chunk in background
-      if (chunkUri) {
+      // Transcribe saved chunk in background (only if live transcription is on)
+      if (chunkUri && liveTranscriptionRef.current) {
         transcribeChunk(chunkUri);
       }
     } catch (error) {
@@ -197,11 +212,24 @@ export function useRecorder() {
     return status.granted;
   }, []);
 
+  const toggleLiveTranscription = useCallback(() => {
+    const newValue = !liveTranscriptionRef.current;
+    liveTranscriptionRef.current = newValue;
+    setIsLiveTranscriptionOn(newValue);
+  }, []);
+
   const startRecording = useCallback(async () => {
     const hasPermission = await requestPermissions();
     if (!hasPermission) {
       throw new Error('Permissão de microfone negada');
     }
+
+    // Configura sessão de áudio para gravação otimizada
+    await AudioModule.setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+      interruptionMode: 'doNotMix',
+    });
 
     // Reset state
     setDuration(0);
@@ -212,6 +240,13 @@ export function useRecorder() {
     transcriptionRef.current = '';
     chunkFilesRef.current = [];
     isStoppingRef.current = false;
+
+    // Determine chunk duration and live transcription preference
+    const settings = await getSettings();
+    const chunkMs = getChunkDurationMs(settings.transcriptionModel);
+    chunkDurationMsRef.current = chunkMs;
+    liveTranscriptionRef.current = settings.liveTranscriptionEnabled;
+    setIsLiveTranscriptionOn(settings.liveTranscriptionEnabled);
 
     // Clean old chunks
     const chunksDir = getChunksDir();
@@ -231,7 +266,7 @@ export function useRecorder() {
       fullRecorderRef.current = null;
     }
 
-    // Start the chunk recorder (rotates every 5s for live transcription)
+    // Start the chunk recorder
     const chunkRecorder = await createRecorder(CHUNK_RECORDING_PRESET);
     recorderRef.current = chunkRecorder;
     chunkRecorder.record();
@@ -242,7 +277,7 @@ export function useRecorder() {
     // Start chunk rotation timer
     chunkTimerRef.current = setInterval(() => {
       rotateChunk();
-    }, CHUNK_DURATION_MS);
+    }, chunkMs);
   }, [requestPermissions, startTimer, rotateChunk]);
 
   const pauseRecording = useCallback(async () => {
@@ -271,7 +306,7 @@ export function useRecorder() {
 
     chunkTimerRef.current = setInterval(() => {
       rotateChunk();
-    }, CHUNK_DURATION_MS);
+    }, chunkDurationMsRef.current);
   }, [startTimer, rotateChunk]);
 
   const stopRecording = useCallback(async (): Promise<{
@@ -317,7 +352,7 @@ export function useRecorder() {
     const recorder = recorderRef.current;
     if (recorder) {
       const lastChunkUri = await saveCurrentChunk();
-      if (lastChunkUri) {
+      if (lastChunkUri && liveTranscriptionRef.current) {
         await transcribeChunk(lastChunkUri);
       }
       recorderRef.current = null;
@@ -359,6 +394,8 @@ export function useRecorder() {
     duration,
     uri: finalUri,
     liveTranscription,
+    isLiveTranscriptionOn,
+    toggleLiveTranscription,
     startRecording,
     pauseRecording,
     resumeRecording,

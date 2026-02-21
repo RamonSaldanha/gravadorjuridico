@@ -77,6 +77,17 @@ export async function createRecording(
   return result.lastInsertRowId;
 }
 
+export async function updateTitle(
+  id: number,
+  title: string
+): Promise<void> {
+  const database = await getDatabase();
+  await database.runAsync(
+    "UPDATE recordings SET title = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+    [title, id]
+  );
+}
+
 export async function updateTranscription(
   id: number,
   transcription: string

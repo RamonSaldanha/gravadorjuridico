@@ -31,6 +31,10 @@ export default function RootLayout() {
           name="settings"
           options={{ title: 'Configurações', headerBackTitle: 'Voltar' }}
         />
+        <Stack.Screen
+          name="audio-test"
+          options={{ title: 'Teste de Áudio', headerBackTitle: 'Voltar' }}
+        />
       </Stack>
     </PaperProvider>
   );

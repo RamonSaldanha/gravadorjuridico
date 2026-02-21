@@ -31,7 +31,7 @@ export async function transcribeWithGemini(
       },
     },
     {
-      text: 'Transcreva este áudio na íntegra em português. Retorne APENAS a transcrição, sem comentários adicionais.',
+      text: `Transcreva este áudio na íntegra em português. Retorne APENAS a transcrição, sem comentários adicionais.`,
     },
   ]);
 

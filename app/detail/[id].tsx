@@ -1,13 +1,13 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, Alert, ToastAndroid } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, ToastAndroid, TextInput, Pressable } from 'react-native';
 import { Text, Button, Card, ActivityIndicator, SegmentedButtons, IconButton } from 'react-native-paper';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { createAudioPlayer, useAudioPlayerStatus, AudioPlayer } from 'expo-audio';
-import { getRecording, updateTranscription, updateDialogue, updateDossier, getAudioParts, Recording } from '../../src/database/recordings';
+import { getRecording, updateTranscription, updateDialogue, updateDossier, updateTitle, Recording } from '../../src/database/recordings';
 import { transcribeAudio, transcribeAudioWithTimestamps, diarizeTranscription, generateDossier } from '../../src/services/ai';
 import { getSettings } from '../../src/services/settings';
 import { formatDuration } from '../../src/hooks/useRecorder';
-import { TimestampedSegment, DiarizedSegment, DiarizedTranscription, isDiarizedTranscription } from '../../src/constants/ai';
+import { DiarizedSegment, DiarizedTranscription, isDiarizedTranscription } from '../../src/constants/ai';
 import { colors } from '../../src/constants/theme';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
@@ -136,6 +136,8 @@ export default function DetailScreen() {
   const [isDiarizing, setIsDiarizing] = useState(false);
   const [isGeneratingDossier, setIsGeneratingDossier] = useState(false);
   const [progressText, setProgressText] = useState('');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -151,6 +153,22 @@ export default function DetailScreen() {
 
   const isBusy = isTranscribing || isDiarizing || isGeneratingDossier;
 
+  function startEditingTitle() {
+    if (!recording) return;
+    setEditTitle(recording.title);
+    setIsEditingTitle(true);
+  }
+
+  async function saveTitle() {
+    if (!recording) return;
+    const trimmed = editTitle.trim();
+    if (trimmed && trimmed !== recording.title) {
+      await updateTitle(recording.id, trimmed);
+      await loadRecording();
+    }
+    setIsEditingTitle(false);
+  }
+
   // ─── Actions ───
 
   async function handleTranscribe() {
@@ -163,23 +181,13 @@ export default function DetailScreen() {
 
     setIsTranscribing(true);
     try {
-      const parts = getAudioParts(recording);
-      const textParts: string[] = [];
-
-      for (let i = 0; i < parts.length; i++) {
-        setProgressText(`Transcrevendo parte ${i + 1}/${parts.length}...`);
-        const text = await transcribeAudio(
-          settings.provider,
-          settings.apiKey,
-          parts[i],
-          settings.transcriptionModel
-        );
-        if (text && text.trim()) {
-          textParts.push(text.trim());
-        }
-      }
-
-      const transcription = textParts.join(' ');
+      setProgressText('Transcrevendo áudio na íntegra...');
+      const transcription = await transcribeAudio(
+        settings.provider,
+        settings.apiKey,
+        recording.file_path,
+        settings.transcriptionModel
+      );
       await updateTranscription(recording.id, transcription);
       await loadRecording();
       setTab('transcription');
@@ -202,52 +210,28 @@ export default function DetailScreen() {
 
     setIsDiarizing(true);
     try {
-      const parts = getAudioParts(recording);
-      const allSegments: TimestampedSegment[] = [];
-      let plainTextParts: string[] = [];
-      let timeOffset = 0;
-
-      // Step 1: Transcribe with timestamps
-      for (let i = 0; i < parts.length; i++) {
-        setProgressText(`Transcrevendo parte ${i + 1}/${parts.length}...`);
-        const result = await transcribeAudioWithTimestamps(
-          settings.provider,
-          settings.apiKey,
-          parts[i],
-          settings.transcriptionModel
-        );
-
-        for (const seg of result.segments) {
-          allSegments.push({
-            start: seg.start + timeOffset,
-            end: seg.end + timeOffset,
-            text: seg.text,
-          });
-        }
-
-        if (result.plainText) plainTextParts.push(result.plainText);
-
-        if (result.segments.length > 0) {
-          const lastSeg = result.segments[result.segments.length - 1];
-          timeOffset += lastSeg.end > 0 ? lastSeg.end : 5;
-        } else {
-          timeOffset += 5;
-        }
-      }
+      // Step 1: Transcribe full audio with timestamps
+      setProgressText('Transcrevendo áudio na íntegra...');
+      const result = await transcribeAudioWithTimestamps(
+        settings.provider,
+        settings.apiKey,
+        recording.file_path,
+        settings.transcriptionModel
+      );
 
       // Step 2: Diarize with LLM
       setProgressText('Identificando interlocutores...');
       const diarizedSegments = await diarizeTranscription(
         settings.provider,
         settings.apiKey,
-        allSegments,
+        result.segments,
         settings.dossierModel
       );
 
       const diarizedResult: DiarizedTranscription = {
         diarized: true,
         segments: diarizedSegments,
-        plainText: plainTextParts.join(' '),
+        plainText: result.plainText || '',
       };
 
       await updateDialogue(recording.id, JSON.stringify(diarizedResult));
@@ -269,7 +253,7 @@ export default function DetailScreen() {
   }
 
   async function handleGenerateDossier() {
-    if (!recording?.transcription) return;
+    if (!recording) return;
     const settings = await getSettings();
     if (!settings.apiKey) {
       Alert.alert('Configuração necessária', 'Configure sua chave de API em Configurações.');
@@ -278,10 +262,24 @@ export default function DetailScreen() {
 
     setIsGeneratingDossier(true);
     try {
+      // If no transcription yet, transcribe full audio first
+      let transcriptionText = recording.transcription;
+      if (!transcriptionText) {
+        setProgressText('Transcrevendo áudio na íntegra...');
+        transcriptionText = await transcribeAudio(
+          settings.provider,
+          settings.apiKey,
+          recording.file_path,
+          settings.transcriptionModel
+        );
+        await updateTranscription(recording.id, transcriptionText);
+      }
+
+      setProgressText('Gerando dossiê...');
       const dossier = await generateDossier(
         settings.provider,
         settings.apiKey,
-        recording.transcription,
+        transcriptionText,
         settings.dossierModel
       );
 
@@ -293,6 +291,7 @@ export default function DetailScreen() {
       Alert.alert('Erro ao gerar dossiê', error.message || 'Falha ao gerar o dossiê');
     } finally {
       setIsGeneratingDossier(false);
+      setProgressText('');
     }
   }
 
@@ -411,7 +410,37 @@ export default function DetailScreen() {
       {/* Info Card */}
       <Card style={styles.infoCard}>
         <Card.Content>
-          <Text style={styles.title}>{recording.title}</Text>
+          {isEditingTitle ? (
+            <View style={styles.titleEditRow}>
+              <TextInput
+                style={styles.titleInput}
+                value={editTitle}
+                onChangeText={setEditTitle}
+                onSubmitEditing={saveTitle}
+                onBlur={saveTitle}
+                autoFocus
+                selectTextOnFocus
+              />
+              <IconButton
+                icon="check"
+                size={20}
+                iconColor={colors.primary}
+                onPress={saveTitle}
+                style={{ margin: 0 }}
+              />
+            </View>
+          ) : (
+            <Pressable onPress={startEditingTitle} style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={2}>{recording.title}</Text>
+              <IconButton
+                icon="pencil-outline"
+                size={16}
+                iconColor={colors.onSurfaceVariant}
+                style={{ margin: 0 }}
+                onPress={startEditingTitle}
+              />
+            </Pressable>
+          )}
           <Text style={styles.meta}>
             {new Date(recording.created_at).toLocaleDateString('pt-BR', {
               day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -426,45 +455,43 @@ export default function DetailScreen() {
 
       {/* Action Buttons */}
       <View style={styles.actions}>
-        <Button
-          mode="contained"
-          icon="text-recognition"
-          onPress={handleTranscribe}
-          loading={isTranscribing}
-          disabled={isBusy}
-          style={styles.actionButton}
-          buttonColor={colors.primary}
-          compact
-        >
-          {hasTranscription ? 'Retranscrever' : 'Transcrever'}
-        </Button>
-
-        <Button
-          mode="contained"
-          icon="forum-outline"
-          onPress={handleDiarize}
-          loading={isDiarizing}
-          disabled={isBusy}
-          style={styles.actionButton}
-          buttonColor="#2E7D32"
-          compact
-        >
-          {hasDialogue ? 'Redialogizar' : 'Transformar em Diálogo'}
-        </Button>
-
-        <Button
-          mode="contained"
-          icon="file-document-outline"
-          onPress={handleGenerateDossier}
-          loading={isGeneratingDossier}
-          disabled={!hasTranscription || isBusy}
-          style={styles.actionButton}
-          buttonColor={colors.secondary}
-          textColor={colors.onSecondary}
-          compact
-        >
-          Gerar Dossiê
-        </Button>
+        <Text style={styles.actionsLabel}>Gerar:</Text>
+        <View style={styles.actionsRow}>
+          <Button
+            mode="contained"
+            onPress={handleTranscribe}
+            loading={isTranscribing}
+            disabled={isBusy}
+            style={styles.actionButton}
+            buttonColor={colors.primary}
+            compact
+          >
+            Transcrição
+          </Button>
+          <Button
+            mode="contained"
+            onPress={handleDiarize}
+            loading={isDiarizing}
+            disabled={isBusy}
+            style={styles.actionButton}
+            buttonColor="#2E7D32"
+            compact
+          >
+            Diálogo
+          </Button>
+          <Button
+            mode="contained"
+            onPress={handleGenerateDossier}
+            loading={isGeneratingDossier}
+            disabled={isBusy}
+            style={styles.actionButton}
+            buttonColor={colors.secondary}
+            textColor={colors.onSecondary}
+            compact
+          >
+            Dossiê
+          </Button>
+        </View>
       </View>
 
       {/* Tabs + Content */}
@@ -566,10 +593,30 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   title: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.onSurface,
+    flex: 1,
+  },
+  titleEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  titleInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.onSurface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.primary,
+    paddingVertical: 2,
   },
   meta: {
     fontSize: 13,
@@ -597,11 +644,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actions: {
-    gap: 8,
     marginBottom: 12,
+  },
+  actionsLabel: {
+    fontSize: 13,
+    color: colors.onSurfaceVariant,
+    marginBottom: 6,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   actionButton: {
     borderRadius: 8,
+    flex: 1,
   },
   tabs: {
     marginBottom: 8,

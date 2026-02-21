@@ -20,7 +20,8 @@
       "WebFetch(domain:galaxies.dev)",
       "WebFetch(domain:blog.logrocket.com)",
       "WebFetch(domain:www.lune.dev)",
-      "WebFetch(domain:devsolus.com)"
+      "WebFetch(domain:devsolus.com)",
+      "WebFetch(domain:ai.google.dev)"
     ]
   }
 }

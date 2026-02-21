@@ -57,6 +57,32 @@ export async function generateDossier(
   }
 }
 
+export async function generateTitle(
+  provider: AIProvider,
+  apiKey: string,
+  transcription: string,
+  model: string
+): Promise<string> {
+  const prompt = `Com base na transcrição abaixo de uma reunião jurídica, gere um título curto (máximo 8 palavras) que resuma o assunto.
+O título deve começar com "Reunião" e mencionar o tema principal ou a pessoa envolvida.
+Exemplos: "Reunião sobre financiamento imobiliário", "Reunião de Fulana sobre golpe".
+Retorne APENAS o título, sem aspas, sem explicações.
+
+TRANSCRIÇÃO:
+${transcription}`;
+
+  switch (provider) {
+    case 'openai':
+      return (await generateDossierWithOpenAI(apiKey, prompt, model)).trim();
+    case 'gemini':
+      return (await generateDossierWithGemini(apiKey, prompt, model)).trim();
+    case 'groq':
+      return (await generateDossierWithGroq(apiKey, prompt, model)).trim();
+    default:
+      throw new Error(`Provedor não suportado: ${provider}`);
+  }
+}
+
 export async function diarizeTranscription(
   provider: AIProvider,
   apiKey: string,
